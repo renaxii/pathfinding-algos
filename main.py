@@ -27,20 +27,40 @@ grid = [[False for _ in range(COLS)] for _ in range(ROWS)]
 start = (1,1)
 end = (14,18)
 
-def draw_grid(explored=None, path=ModuleNotFoundError):
+animation_order = []
+animation_index = 0
+
+explored = set()
+final_path = []
+path_cells = set()
+
+frame_counter = 0
+animating = False
+
+moving_start = False
+moving_end = False
+
+def reset_search():
+    global animation_order, animation_index
+    global explored, final_path, path_cells
+    global frame_counter, animating
+
+    animation_order = []
+    animation_index = 0
+    explored.clear()
+    final_path = []
+    path_cells.clear()
+    frame_counter = 0
+    animating = False
+
+def draw_grid():
     screen.fill(WHITE)
-
-    if explored is None:
-        explored = set()
-
-    if path is None:
-        path = set()
 
     for row in range(ROWS):
         for col in range(COLS):
 
-            x = col*CELL_SIZE
-            y = row*CELL_SIZE
+            x = col * CELL_SIZE
+            y = row * CELL_SIZE
             cell = (row, col)
 
             # default
@@ -53,7 +73,7 @@ def draw_grid(explored=None, path=ModuleNotFoundError):
                 color = BLUE
 
             # path
-            if cell in path:
+            if cell in path_cells:
                 color = YELLOW
 
             # start and end
@@ -64,6 +84,17 @@ def draw_grid(explored=None, path=ModuleNotFoundError):
 
             pygame.draw.rect(screen, color, (x, y, CELL_SIZE, CELL_SIZE))
             pygame.draw.rect(screen, GRID_COLOR, (x, y, CELL_SIZE, CELL_SIZE), 1)
+
+def get_cell(mouse_pos):
+    x, y = mouse_pos
+
+    col = x // CELL_SIZE
+    row = y // CELL_SIZE
+
+    if 0<= row < ROWS and 0 <= col < COLS:
+        return (row, col)
+    else:
+        return None
 
 def place_wall(mouse_pos):
     x, y = mouse_pos
@@ -76,55 +107,65 @@ def place_wall(mouse_pos):
             grid[row][col] = True
 
 
-animation_order = []
-animation_index = 0
-
-explored = set()
-final_path = []
-path_cells = set()
-
-frame_counter = 0
-animating = False
-
 running = True
 
 while running:
     for event in pygame.event.get():
+
         if event.type == pygame.QUIT:
             running = False
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            mouse_x, mouse_y = pygame.mouse.get_pos()
+            cell = get_cell(event.pos)
 
-            col = mouse_x // CELL_SIZE
-            row = mouse_y // CELL_SIZE
+            if cell is not None:
+                if event.button == 1:
+                    if cell == start:
+                        moving_start = True
+                    elif cell != end:
+                        grid[cell[0]][cell[1]] = True
+                        reset_search()
 
-            if 0<=row<ROWS and 0<=col<COLS:
-                if (row, col) != start and (row, col) != end:
-
-                    # left click = add wall
-                    if event.button==1:
-                        grid[row][col] = True
-
-                    # right click = remove wall
-                    elif event.button==3:
-                        grid[row][col] = False
+                elif event.button == 3:
+                    if cell == end:
+                        moving_end = True
+                    elif cell != start:
+                        grid[cell[0]][cell[1]] = False
+                        reset_search()
 
         if event.type == pygame.MOUSEMOTION:
-            mouse_x, mouse_y = pygame.mouse.get_pos()
+            cell = get_cell(event.pos)
 
-            col = mouse_x // CELL_SIZE
-            row = mouse_y // CELL_SIZE
+            if cell is not None:
+                buttons = pygame.mouse.get_pressed()
 
-            if 0<=row<ROWS and 0<=col<COLS:
-                if (row, col) != start and (row,col) != end:
-                    # left mouse -> draw
-                    if pygame.mouse.get_pressed()[0]:
-                            grid[row][col] = True
+                if moving_start and buttons[0]:
+                    if not grid[cell[0]][cell[1]] and cell != end:
+                        start = cell
+                        reset_search()
 
-                    # right mouse -> erase
-                    elif pygame.mouse.get_pressed()[2]:
-                        grid[row][col] = False
+                elif moving_end and buttons[2]:
+                    if not grid[cell[0]][cell[1]] and cell != start:
+                        end = cell
+                        reset_search()
+
+                elif buttons[0]:
+                    if cell != start and cell != end:
+                        grid[cell[0]][cell[1]] = True
+                        reset_search()
+
+                elif buttons[2]:
+                    if cell != start and cell != end:
+                        grid[cell[0]][cell[1]] = False
+                        reset_search()
+
+        if event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                moving_start = False
+
+            elif event.button == 3:
+                moving_end = False
+
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 animation_order, final_path = bfs(grid, start, end)
@@ -136,9 +177,36 @@ while running:
 
                 animating = True
 
-                print("Visited cells: ", len(animation_order))
-                print("Path length: ", len(final_path))
-                
+                print("Visited cells:", len(animation_order))
+                print("Path length:", len(final_path))
+
+                if not final_path:
+                    print("No path found!")
+
+        if event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                moving_start = False
+            elif event.button == 3:
+                moving_end = False
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                animation_order, final_path = bfs(grid, start, end)
+
+                animation_index = 0
+                explored = set()
+                path_cells = set()
+                frame_counter = 0
+
+                animating = True
+
+                print("Visited cells:", len(animation_order))
+                print("Path length:", len(final_path))
+
+                if not final_path:
+                    print("No path found!")
+
+    # Animate BFS
     if animating:
         frame_counter += 1
 
@@ -151,10 +219,10 @@ while running:
 
             else:
                 animating = False
-
                 path_cells = set(final_path)
 
-    draw_grid(explored, path_cells)
+    # Draw the grid EVERY frame
+    draw_grid()
 
     pygame.display.update()
     clock.tick(60)
