@@ -13,6 +13,8 @@ WHITE = (245,245,245)
 BLACK = (30,35,45)
 GREEN = (80,190,120)
 RED = (220,90,90)
+BLUE = (130, 190, 230)
+YELLOW = (245, 210, 100)
 GRID_COLOR = (190,195,200)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -25,14 +27,21 @@ grid = [[False for _ in range(COLS)] for _ in range(ROWS)]
 start = (1,1)
 end = (14,18)
 
-def draw_grid():
+def draw_grid(explored=None, path=ModuleNotFoundError):
     screen.fill(WHITE)
+
+    if explored is None:
+        explored = set()
+
+    if path is None:
+        path = set()
 
     for row in range(ROWS):
         for col in range(COLS):
 
-            x=col*CELL_SIZE
-            y=row*CELL_SIZE
+            x = col*CELL_SIZE
+            y = row*CELL_SIZE
+            cell = (row, col)
 
             # default
             color = WHITE
@@ -40,16 +49,20 @@ def draw_grid():
             # wall
             if grid[row][col]:
                 color = BLACK
+            elif cell in explored:
+                color = BLUE
+
+            # path
+            if cell in path:
+                color = YELLOW
 
             # start and end
-            if (row, col) == start:
+            if cell == start:
                 color = GREEN
-            elif (row, col) == end:
+            elif cell == end:
                 color = RED
 
             pygame.draw.rect(screen, color, (x, y, CELL_SIZE, CELL_SIZE))
-
-            # grid lines
             pygame.draw.rect(screen, GRID_COLOR, (x, y, CELL_SIZE, CELL_SIZE), 1)
 
 def place_wall(mouse_pos):
@@ -62,6 +75,16 @@ def place_wall(mouse_pos):
         if (row, col) != start and (row, col) != end:
             grid[row][col] = True
 
+
+animation_order = []
+animation_index = 0
+
+explored = set()
+final_path = []
+path_cells = set()
+
+frame_counter = 0
+animating = False
 
 running = True
 
@@ -104,17 +127,36 @@ while running:
                         grid[row][col] = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                visited, path = bfs(grid, start, end)
+                animation_order, final_path = bfs(grid, start, end)
 
-                print("Visited cells:", len(visited))
-                print("Shortest path length:", len(path))
-    
-    draw_grid()
+                animation_index = 0
+                explored = set()
+                path_cells = set()
+                frame_counter = 0
+
+                animating = True
+
+                print("Visited cells: ", len(animation_order))
+                print("Path length: ", len(final_path))
+                
+    if animating:
+        frame_counter += 1
+
+        if frame_counter >= 3:
+            frame_counter = 0
+
+            if animation_index < len(animation_order):
+                explored.add(animation_order[animation_index])
+                animation_index += 1
+
+            else:
+                animating = False
+
+                path_cells = set(final_path)
+
+    draw_grid(explored, path_cells)
 
     pygame.display.update()
     clock.tick(60)
 
 pygame.quit()
-
-if __name__ == "__main__":
-    main()
