@@ -1,31 +1,31 @@
 import pygame
+import asyncio
 from algorithms import bfs
 
 pygame.init()
 
-WIDTH  = 800
+WIDTH = 800
 HEIGHT = 640
 ROWS = 16
 COLS = 20
 CELL_SIZE = WIDTH // COLS
 
-WHITE = (245,245,245)
-BLACK = (30,35,45)
-GREEN = (80,190,120)
-RED = (220,90,90)
+WHITE = (245, 245, 245)
+BLACK = (30, 35, 45)
+GREEN = (80, 190, 120)
+RED = (220, 90, 90)
 BLUE = (130, 190, 230)
 YELLOW = (245, 210, 100)
-GRID_COLOR = (190,195,200)
+GRID_COLOR = (190, 195, 200)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("title")
-clock = pygame.time.Clock()
+pygame.display.set_caption("title placeholder")
 
-# false = empty; true = wall
+# False = empty, True = wall
 grid = [[False for _ in range(COLS)] for _ in range(ROWS)]
 
-start = (1,1)
-end = (14,18)
+start = (1, 1)
+end = (14, 18)
 
 animation_order = []
 animation_index = 0
@@ -37,8 +37,10 @@ path_cells = set()
 frame_counter = 0
 animating = False
 
+# dragging variables
 moving_start = False
 moving_end = False
+wall_mode = None
 
 def reset_search():
     global animation_order, animation_index
@@ -53,6 +55,18 @@ def reset_search():
     frame_counter = 0
     animating = False
 
+
+def edit_wall(cell, make_wall):
+    row, col = cell
+
+    if cell == start or cell == end:
+        return
+
+    if grid[row][col] != make_wall:
+        grid[row][col] = make_wall
+        reset_search()
+
+
 def draw_grid():
     screen.fill(WHITE)
 
@@ -63,20 +77,18 @@ def draw_grid():
             y = row * CELL_SIZE
             cell = (row, col)
 
-            # default
             color = WHITE
 
-            # wall
             if grid[row][col]:
                 color = BLACK
+
             elif cell in explored:
                 color = BLUE
 
-            # path
+            # path found
             if cell in path_cells:
                 color = YELLOW
 
-            # start and end
             if cell == start:
                 color = GREEN
             elif cell == end:
@@ -85,146 +97,109 @@ def draw_grid():
             pygame.draw.rect(screen, color, (x, y, CELL_SIZE, CELL_SIZE))
             pygame.draw.rect(screen, GRID_COLOR, (x, y, CELL_SIZE, CELL_SIZE), 1)
 
+
 def get_cell(mouse_pos):
     x, y = mouse_pos
 
     col = x // CELL_SIZE
     row = y // CELL_SIZE
 
-    if 0<= row < ROWS and 0 <= col < COLS:
+    if 0 <= row < ROWS and 0 <= col < COLS:
         return (row, col)
-    else:
-        return None
-
-def place_wall(mouse_pos):
-    x, y = mouse_pos
-
-    col = x // CELL_SIZE
-    row = y // CELL_SIZE
-
-    if 0<= row < ROWS and 0 <= col < COLS:
-        if (row, col) != start and (row, col) != end:
-            grid[row][col] = True
+    return None
 
 
-running = True
+async def main():
+    global start, end
+    global moving_start, moving_end, wall_mode
+    global animation_order, animation_index
+    global explored, final_path, path_cells
+    global frame_counter, animating
 
-while running:
-    for event in pygame.event.get():
+    running = True
 
-        if event.type == pygame.QUIT:
-            running = False
+    while running:
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            cell = get_cell(event.pos)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
 
-            if cell is not None:
-                if event.button == 1:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                cell = get_cell(event.pos)
+
+                if cell is not None and event.button == 1:
+
                     if cell == start:
                         moving_start = True
-                    elif cell != end:
-                        grid[cell[0]][cell[1]] = True
-                        reset_search()
+                        wall_mode = None
 
-                elif event.button == 3:
-                    if cell == end:
+                    elif cell == end:
                         moving_end = True
-                    elif cell != start:
-                        grid[cell[0]][cell[1]] = False
-                        reset_search()
+                        wall_mode = None
 
-        if event.type == pygame.MOUSEMOTION:
-            cell = get_cell(event.pos)
+                    else:
+                        wall_mode = not grid[cell[0]][cell[1]]
+                        edit_wall(cell, wall_mode)
 
-            if cell is not None:
-                buttons = pygame.mouse.get_pressed()
+            if event.type == pygame.MOUSEMOTION:
+                cell = get_cell(event.pos)
 
-                if moving_start and buttons[0]:
-                    if not grid[cell[0]][cell[1]] and cell != end:
-                        start = cell
-                        reset_search()
+                if cell is not None:
+                    buttons = pygame.mouse.get_pressed()
 
-                elif moving_end and buttons[2]:
-                    if not grid[cell[0]][cell[1]] and cell != start:
-                        end = cell
-                        reset_search()
+                    if moving_start and buttons[0]:
+                        if not grid[cell[0]][cell[1]] and cell != end:
+                            start = cell
+                            reset_search()
 
-                elif buttons[0]:
-                    if cell != start and cell != end:
-                        grid[cell[0]][cell[1]] = True
-                        reset_search()
+                    elif moving_end and buttons[0]:
+                        if not grid[cell[0]][cell[1]] and cell != start:
+                            end = cell
+                            reset_search()
 
-                elif buttons[2]:
-                    if cell != start and cell != end:
-                        grid[cell[0]][cell[1]] = False
-                        reset_search()
+                    elif wall_mode is not None and buttons[0]:
+                        edit_wall(cell, wall_mode)
 
-        if event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1:
-                moving_start = False
+            if event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    moving_start = False
+                    moving_end = False
+                    wall_mode = None
 
-            elif event.button == 3:
-                moving_end = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                animation_order, final_path = bfs(grid, start, end)
+                    animation_order, final_path = bfs(grid, start, end)
 
-                animation_index = 0
-                explored = set()
-                path_cells = set()
+                    animation_index = 0
+                    explored = set()
+                    path_cells = set()
+                    frame_counter = 0
+
+                    animating = True
+
+                    print("Visited cells:", len(animation_order))
+                    print("Path length:", len(final_path))
+
+                    if not final_path:
+                        print("No path found!")
+
+        if animating:
+            frame_counter += 1
+
+            if frame_counter >= 3:
                 frame_counter = 0
+                if animation_index < len(animation_order):
+                    explored.add(animation_order[animation_index])
+                    animation_index += 1
+                else:
+                    animating = False
+                    path_cells = set(final_path)
 
-                animating = True
+        draw_grid()
+        pygame.display.flip()
+        await asyncio.sleep(0)
 
-                print("Visited cells:", len(animation_order))
-                print("Path length:", len(final_path))
+    pygame.quit()
 
-                if not final_path:
-                    print("No path found!")
-
-        if event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1:
-                moving_start = False
-            elif event.button == 3:
-                moving_end = False
-
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                animation_order, final_path = bfs(grid, start, end)
-
-                animation_index = 0
-                explored = set()
-                path_cells = set()
-                frame_counter = 0
-
-                animating = True
-
-                print("Visited cells:", len(animation_order))
-                print("Path length:", len(final_path))
-
-                if not final_path:
-                    print("No path found!")
-
-    # Animate BFS
-    if animating:
-        frame_counter += 1
-
-        if frame_counter >= 3:
-            frame_counter = 0
-
-            if animation_index < len(animation_order):
-                explored.add(animation_order[animation_index])
-                animation_index += 1
-
-            else:
-                animating = False
-                path_cells = set(final_path)
-
-    # Draw the grid EVERY frame
-    draw_grid()
-
-    pygame.display.update()
-    clock.tick(60)
-
-pygame.quit()
+asyncio.run(main())
